@@ -1,2 +1,13 @@
-# chiletv
-Tools required to download and curate an audio-visual dataset of speaking faces, focused on the spanish spoken in Chile.
+# ChileTV Dataset
+Tools used to collect and curate the ChileTV Dataset from online audio-visual media.
+
+## Finding candidate names
+candidate_names
+## Downloading videos
+video_download
+## Tracking faces
+face_tracker
+## Data analysis
+analysis
+## Data
+data
