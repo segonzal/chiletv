@@ -3,7 +3,8 @@ from datetime import datetime
 from scrapy.linkextractors import LinkExtractor
 from scrapy.spiders import CrawlSpider, Rule
 
-from .utils import pick_longest, extract_content, repair_item, remove_nodes
+from utils import pick_longest, extract_content, repair_item, remove_nodes
+
 
 class ElDinamoSpider(CrawlSpider):
     name = 'eldinamo'

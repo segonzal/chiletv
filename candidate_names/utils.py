@@ -18,6 +18,7 @@ def repair_item(item):
         return item
     return None
 
+
 def remove_nodes(root, selectors):
     for selector in selectors:
         element = root.css(selector)
