@@ -1,10 +1,11 @@
 import re
 import csv
 import json
-import spacy
-import numpy as np
 from pathlib import Path
-from spacy.kb import KnowledgeBase
+
+import argh
+import spacy
+
 # python -m spacy download es_core_news_lg
 
 
@@ -24,13 +25,23 @@ def get_news(root: Path):
             for line in fp:
                 obj = json.loads(line)
                 text = '\n'.join([obj[k] for k in ['title', 'description', 'content']])
-                  text = clean_string(text)
-                yield text
+                text = clean_string(text)
+            yield text
 
 
-def main():
-    root = Path('news')
-    nlp = spacy.load('es_core_news_lg', disable=['tok2vec', 'tagger', 'parser', 'attribute_ruler', 'lemmatizer'])
+@argh.arg('root', help='Storage folder of the crawled news.')
+def main(root: str):
+    root = Path(root)
+    model_name = 'es_core_news_lg'
+
+    if not spacy.util.is_package(model_name):
+        spacy.cli.download(model_name)
+
+    nlp = spacy.load(model_name, disable=['tok2vec',
+                                          'tagger',
+                                          'parser',
+                                          'attribute_ruler',
+                                          'lemmatizer'])
 
     people = {}
     for document_number, text in enumerate(get_news(root)):
@@ -40,11 +51,16 @@ def main():
                 d = people.setdefault(entity.text, {})
                 d[document_number] = d.get(document_number, 0) + 1
 
-    with (root / 'documents.csv').open('w', encoding='utf8') as csvfile:
+    with (root / 'documents.csv').open('w', encoding='utf8', newline='') as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=['name', 'num_docs', 'sum_values'])
+        writer.writeheader()
         for name, docs in people.items():
-            csvfile.write(f"{name},{len(docs)},{sum(docs.values())}\n")
-
+            writer.writerow({
+                'name': name,
+                'num_docs': len(docs),
+                'sum_values': sum(docs.values()),
+            })
 
 
 if __name__ == '__main__':
-    main()
+    argh.dispatch_command(main)
