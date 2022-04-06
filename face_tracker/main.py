@@ -5,6 +5,7 @@ import tqdm
 import platform
 from pathlib import Path
 
+import argh
 import torch
 from video_reader import BatchedVideoReader
 from face_detector import FaceDetector
@@ -57,7 +58,18 @@ def remove_empty_detections(data, keep_ids):
             i += 1
 
 
-def main(root: str,
+@argh.arg('src', help='Source folder for the videos.')
+@argh.arg('--dst', help='Destination folder for the tracks.')
+@argh.arg('--frame-rate', help='Frame rate to read videos.')
+@argh.arg('--batch-size', help='Batch size for the face detector.')
+@argh.arg('--content-threshold', help='Threshold for the shot-transition detector.')
+@argh.arg('--iou-threshold', help='Threshold for the IOU overlap between different-frame detections.')
+@argh.arg('--max-time-gap-length', help='Maximum allowed gap in seconds between corresponding detections.')
+@argh.arg('--min-shot-length', help='Minimum duration in seconds for a valid track.')
+@argh.arg('--min-face-size', help='Minimum size of a face required by the face detector.')
+@argh.arg('--detector-scale', help='Scaling factor for any image given to the face detector.')
+@argh.arg('--use-gpu', help='Whether the face detector should use the GPU.')
+def main(src: str,
          dst: str = None,
          frame_rate: float = 30.0,
          batch_size: int = 1024,
@@ -68,7 +80,7 @@ def main(root: str,
          min_face_size: int = 20,
          detector_scale: float = 0.125,
          use_gpu: bool = True):
-    root = Path(root)
+    root = Path(src)
     if dst is not None:
         dst = Path(dst)
         dst.mkdir(exist_ok=True)
@@ -165,7 +177,4 @@ def get_sample(src, dst, num):
 
 
 if __name__ == "__main__":
-    _root = r'D:\downloads\poi'
-    _test_root = r'D:\downloads\test_videos'
-    main(_test_root, r'D:\downloads\tracks@15FPS', frame_rate=15.0)
-    # get_sample(_root, _test_root, 150)
+    argh.dispatch_command(main)
