@@ -30,11 +30,13 @@ def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
 
 def get_data(tracker, reader, detector):
     """Gets the tracked data."""
-    for frame, timestamp, bbox, kpts in get_detections(reader, detector):
-        tracker.filter_by_timestamp(timestamp)
-        tracker.detect_shot_transition(frame)
-        curr_face_ids = tracker.match_boxes(bbox, timestamp)
-        yield timestamp, bbox, kpts, curr_face_ids
+    with tqdm.tqdm(total=reader.get_duration()) as loop:
+        for frame, timestamp, bbox, kpts in get_detections(reader, detector):
+            loop.update(timestamp - loop.n)
+            tracker.filter_by_timestamp(timestamp)
+            tracker.detect_shot_transition(frame)
+            curr_face_ids = tracker.match_boxes(bbox, timestamp)
+            yield timestamp, bbox, kpts, curr_face_ids
 
 
 def remove_empty_detections(data, keep_ids):
@@ -105,7 +107,9 @@ def main(src: str,
     all_videos = list(root.glob('**/*.mp4'))
     pending_videos = [v for v in all_videos
                       if not ((v.parent if dst is None else dst) / (v.stem + '.tracks.json')).exists()]
-    loop = tqdm.tqdm(sorted(pending_videos), total=len(all_videos), initial=len(all_videos) - len(pending_videos))
+    total_iterations = len(all_videos)
+    initial_iterations = (len(all_videos) - len(pending_videos))
+    loop = tqdm.tqdm(sorted(pending_videos), total=total_iterations, initial=initial_iterations)
 
     for filename in loop:
         loop.set_description(str(filename))
