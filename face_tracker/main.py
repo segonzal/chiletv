@@ -30,9 +30,9 @@ def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
 
 def get_data(tracker, reader, detector):
     """Gets the tracked data."""
-    with tqdm.tqdm(total=reader.get_duration()) as loop:
+    with tqdm.tqdm(total=int(reader.get_duration())) as loop:
         for frame, timestamp, bbox, kpts in get_detections(reader, detector):
-            loop.update(timestamp - loop.n)
+            loop.update(int(timestamp - loop.n))
             tracker.filter_by_timestamp(timestamp)
             tracker.detect_shot_transition(frame)
             curr_face_ids = tracker.match_boxes(bbox, timestamp)
@@ -118,16 +118,17 @@ def main(src: str,
             reader.start(str(filename))
             width, height = reader.get_shape()
             video_duration = reader.get_duration()
+
+            video_url = get_video_url(filename)
+            tracker.reset()
+
+            # Get the time spent detecting and tracking boxes
+            start_time = time.time()
+            data = list(get_data(tracker, reader, detector))
+            end_time = time.time()
+
         except (cv2.error, ZeroDivisionError) as err:
             continue
-
-        video_url = get_video_url(filename)
-        tracker.reset()
-
-        # Get the time spent detecting and tracking boxes
-        start_time = time.time()
-        data = list(get_data(tracker, reader, detector))
-        end_time = time.time()
 
         # Remove all frames without detections or too short
         data = [dict(time=timestamp,
