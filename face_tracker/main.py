@@ -143,14 +143,17 @@ def main(src: str,
             timestamp = frame_data['time']
             for face_id, bbox, kpts in zip(frame_data['faceid'], frame_data['bbox'], frame_data['kpts']):
                 if face_id not in tracks:
-                    tracks[face_id] = dict(start_time=timestamp, end_time=timestamp, data=[])
+                    tracks[face_id] = dict(start_time=timestamp, end_time=timestamp, time=[], bbox=[], kpts=[])
                 else:
                     tracks[face_id]['end_time'] = max(timestamp, tracks[face_id]['end_time'])
-                tracks[face_id]['data'].append(dict(time=timestamp, bbox=bbox, kpts=kpts))
+                
+                tracks[face_id]['time'].append(timestamp)
+                tracks[face_id]['bbox'].append(bbox)
+                tracks[face_id]['kpts'].append(kpts)
 
         tracks = {fid: tms for fid, tms in tracks.items() if tms['end_time'] - tms['start_time'] > min_shot_length}
 
-        remove_empty_detections(data, tracks)
+        # remove_empty_detections(data, tracks)
 
         data = {
             'url': video_url,
