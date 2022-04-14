@@ -30,7 +30,7 @@ def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
 
 def get_data(tracker, reader, detector):
     """Gets the tracked data."""
-    with tqdm.tqdm(total=int(reader.get_duration())) as loop:
+    with tqdm.tqdm(total=int(reader.get_duration()), leave=False) as loop:
         for frame, timestamp, bbox, kpts in get_detections(reader, detector):
             loop.update(int(timestamp - loop.n))
             tracker.filter_by_timestamp(timestamp)
