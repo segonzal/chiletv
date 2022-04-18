@@ -16,6 +16,7 @@ dependencies:
   - spacy=3.1
   - jupyterlab=3.3
   - notebook=6.4
+  - scipy=1.7
   - pip=20.3
   - pip:
       - youtube-dl
