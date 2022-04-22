@@ -1,2 +1,11 @@
 *
 !.gitignore
+!video_metadata.csv
+!test_tracks@30FPS/
+!test_tracks@30FPS/*
+!test_tracks@15FPS/
+!test_tracks@15FPS/*
+!test_tracks@6FPS/
+!test_tracks@6FPS/*
+!test_tracks@3FPS/
+!test_tracks@3FPS/*
