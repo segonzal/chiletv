@@ -1,56 +1,64 @@
-import argh
 import subprocess
-from tqdm import tqdm
+from itertools import islice
 from pathlib import Path
 from multiprocessing.pool import ThreadPool
 
-
-def rename_originals(src: str, num: int = 0, prefix:str='original-'):
-	src = Path(src)
-
-	files = sorted(src.glob('**/' + prefix + '*.mp4'))
-
-	if num > 0:
-		files = files[:num]
-
-	for file in files:
-		out = file.parent / file.stem[len(prefix):] / file.name
-		print(out)
-		file.rename(out)
+import argh
+from tqdm import tqdm
 
 
-def work(input_file: Path, output_name: str, dst: Path):
+def work(src_file: Path, video_id: str, dst_folder: Path, raw_folder: Path):
+	print(src_file)
+
 	cmd = [
-		'ffmpeg', '-i', str(input_file), '-v', 'quiet',
-		'-map', '0:a', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', str(input_file.parent / (output_name + '.wav')),
-		'-map', '0:v', '-vcodec', 'h264', '-filter:v', 'fps=30', str(input_file.parent / (output_name + '.mp4'))
+		'ffmpeg', '-i', str(src_file), '-v', 'quiet',
+		'-map', '0:a', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', str(src_file.parent / (video_id + '.wav')),
+		'-map', '0:v', '-vcodec', 'h264', '-filter:v', 'fps=30', str(src_file.parent / (video_id + '.mp4'))
 	]
-	print(input_file)
-	#loop.set_description(input_file.name())
-	#loop.update(1)
+
 	p = subprocess.Popen(cmd)
 	p.wait()
-	input_file.rename(dst / (output_name + '.mp4'))
+
+	# Move the original video to raw
+	src_file.rename(raw_folder / (video_id + '.mp4'))
+	
+	# Move the parent folder to dst
+	src_file.parent.rename(dst_folder / video_id)
 
 
-@argh.arg('src', help='Source folder.')
-@argh.arg('dst', help='Destination for processed original files.')
-@argh.arg('num', type=int, help='Number of processes.')
-@argh.arg('--prefix', type=str, default='original-', help='Prefix to rename original files.')
-@argh.arg('--rename', type=int, default=None, const=0, nargs='?', help='The number of original files to rename. Empty to all.')
-def main(src: str, dst:str, num: int, prefix: str = 'original-', rename: int=None):
 
-	# if rename is not None:
-	# 	rename_originals(src, rename, prefix)
+@argh.arg('src_folder', help='Folder with the videos to recode.')
+@argh.arg('dst_folder', help='Destination for recoded videos.')
+@argh.arg('raw_folder', help='Destination for original videos.')
+@argh.arg('-n', '--num', type=int, default=0, help='Number of videos.')
+@argh.arg('-p', '--proc', type=int, default=1, help='Number of processes.')
+@argh.arg('-x', '--prefix', type=str, default='original-', help='Prefix to rename original files.')
+def main(src_folder: str, dst_folder: str, raw_folder: str, num: int=0, proc: int=1, prefix: str='original-'):
+	# src: str, dst:str, num: int, prefix: str = 'original-', rename: int=None):
+	src_folder = Path(src_folder)
+	dst_folder = Path(dst_folder)
+	raw_folder = Path(raw_folder)
 
-	src = Path(src)
-	dst = Path(dst)
-	all_files = list(src.glob('**/' + prefix + '*.mp4'))
-	tp = ThreadPool(num)
-	# loop = tqdm(total=len(all_files))
-	for file in all_files:
-		output_name = file.stem[len(prefix):]
-		tp.apply_async(work, (file, output_name, dst))
+	source_files = src_folder.glob('**/*.mp4')
+
+	if num != 0:
+		source_files = islice(source_files, num)
+
+	tp = ThreadPool(proc)
+	
+	for src_file in source_files:
+		video_id = src_file.stem
+
+		# Renames the original video if it was not renamed already
+		if not src_file.name.startswith(prefix):
+			new_name = src_file.parent / (prefix + src_file.name)
+			if new_name.exists():
+				raise Exception('File "{new_name}" already exists')
+			src_file = src_file.rename(new_name)
+		else:
+			video_id = video_id[len(prefix):]
+
+		tp.apply_async(work, (src_file, video_id, dst_folder, raw_folder))
 	try:
 		tp.close()
 		tp.join()
