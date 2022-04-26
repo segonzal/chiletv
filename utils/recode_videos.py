@@ -2,13 +2,17 @@ import subprocess
 from itertools import islice
 from pathlib import Path
 from multiprocessing.pool import ThreadPool
+from multiprocessing import Lock
 
 import argh
 from tqdm import tqdm
 
 
-def work(src_file: Path, video_id: str, dst_folder: Path, raw_folder: Path):
-	print(src_file)
+def work(src_file: Path, video_id: str, dst_folder: Path, raw_folder: Path, lock: Lock, loop: tqdm):
+	# Leve a register of wich file is being processed
+	lock.acquire()
+	loop.write(str(src_file))
+	lock.release()
 
 	cmd = [
 		'ffmpeg', '-i', str(src_file), '-v', 'quiet',
@@ -25,6 +29,10 @@ def work(src_file: Path, video_id: str, dst_folder: Path, raw_folder: Path):
 	# Move the parent folder to dst
 	src_file.parent.rename(dst_folder / video_id)
 
+	# Update progress bar
+	lock.acquire()
+	loop.update()
+	lock.release()
 
 
 @argh.arg('src_folder', help='Folder with the videos to recode.')
@@ -44,26 +52,34 @@ def main(src_folder: str, dst_folder: str, raw_folder: str, num: int=0, proc: in
 	if num != 0:
 		source_files = islice(source_files, num)
 
+	source_files = list(source_files)
+
 	tp = ThreadPool(proc)
-	
-	for src_file in source_files:
-		video_id = src_file.stem
+	tl = Lock()
+	loop = tqdm(total=len(source_files))
 
-		# Renames the original video if it was not renamed already
-		if not src_file.name.startswith(prefix):
-			new_name = src_file.parent / (prefix + src_file.name)
-			if new_name.exists():
-				raise Exception('File "{new_name}" already exists')
-			src_file = src_file.rename(new_name)
-		else:
-			video_id = video_id[len(prefix):]
-
-		tp.apply_async(work, (src_file, video_id, dst_folder, raw_folder))
 	try:
+		for src_file in source_files:
+			video_id = src_file.stem
+
+			# Renames the original video if it was not renamed already
+			if not src_file.name.startswith(prefix):
+				new_name = src_file.parent / (prefix + src_file.name)
+				if new_name.exists():
+					raise Exception('File "{new_name}" already exists')
+				src_file.rename(new_name)
+				src_file = new_name
+			else:
+				video_id = video_id[len(prefix):]
+
+			tp.apply_async(work, (src_file, video_id, dst_folder, raw_folder, tl, loop))
+		
 		tp.close()
 		tp.join()
 	except KeyboardInterrupt:
 		tp.terminate()
+	finally:
+		print('Done!')
 
 
 if __name__ == '__main__':
