@@ -1,5 +1,5 @@
-import cv2
 import numpy as np
+from utils import get_content_descriptor, get_content_descriptor_distance
 
 
 def iou(bbox_a: np.float32, bbox_b: np.float32) -> float:
@@ -92,10 +92,11 @@ class Tracker:
         return new_boxes_id
 
     def detect_shot_transition(self, frame):
-        descriptor = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2HSV), (8, 8), interpolation=cv2.INTER_AREA)
-        content_delta = np.sqrt(np.sum((descriptor - self.last_descriptor) ** 2))
+        descriptor = get_content_descriptor(frame)
+        content_delta = get_content_descriptor_distance(descriptor, self.last_descriptor)
         if content_delta < self.content_threshold:
             self.tracked_boxes.clear()
+        self.last_descriptor = descriptor
 
     def reset(self):
         self.last_descriptor = 0
