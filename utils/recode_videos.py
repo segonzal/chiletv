@@ -23,8 +23,8 @@ def work(video_folder: Path, dataset_folder: Path, lock: Lock, loop: tqdm):
         'audio': video_folder / 'audio.wav',
     }
 
-    cmd = 'ffmpeg -i {original} -v quiet' + \
-          '-map 0:a -acodec pcm_s16le -ac 1 -ar 16000 {audio}' + \
+    cmd = 'ffmpeg -i {original} -v quiet ' + \
+          '-map 0:a -acodec pcm_s16le -ac 1 -ar 16000 {audio} ' + \
           '-map 0:v -vcodec h264 -filter:v fps=30 {video}'
     cmd = cmd.format_map(paths)
 
@@ -32,16 +32,17 @@ def work(video_folder: Path, dataset_folder: Path, lock: Lock, loop: tqdm):
     p.wait()
 
     # Move completed files
-    for key, path in paths.items():
-        path.rename(dataset_folder / key / (video_id + path.name[path.name.index('.'):]))
+    if paths['video'].exists() and paths['audio'].exists():
+        for key, path in paths.items():
+            path.rename(dataset_folder / key / (video_id + path.name[path.name.index('.'):]))
 
-    # Delete emptied video folder
-    try:
-        video_folder.rmdir()
-    except OSError as err:
-        lock.acquire()
-        loop.write(f'Error: {video_folder} is not empty.')
-        lock.release()
+        # Delete emptied video folder
+        try:
+            video_folder.rmdir()
+        except OSError as err:
+            lock.acquire()
+            loop.write(f'Error: {video_folder} is not empty.')
+            lock.release()
 
     # Update progress bar
     lock.acquire()
