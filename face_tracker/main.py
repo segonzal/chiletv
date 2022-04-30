@@ -82,7 +82,7 @@ def detect_faces(src_folder: str,
                 reader.start(str(video_path))
                 width, height = reader.get_shape()
 
-                detector.set_scale(float(max(width, height)) / float(frame_size))
+                detector.set_scale(float(frame_size) / float(max(width, height)))
 
                 data['width'] = width
                 data['height'] = height
@@ -111,12 +111,12 @@ def detect_faces(src_folder: str,
                 data['detection_length'] = end_time - start_time
 
             except (cv2.error, ZeroDivisionError) as err:
-                main_loop.write('An error has occurred for video', video_path)
+                main_loop.write(f'An error has occurred for video "{video_path}"')
                 continue
 
             # Write detection file
             with (dst_folder / f'{video_path.stem}.detections.json').open('w', encoding='utf8') as wp:
-                json.dump(data, wp, indent=4, cls=NumpyEncoder)
+                json.dump(data, wp, cls=NumpyEncoder)
 
 
 @argh.arg('src_folder', help='Source folder for the detections.')
