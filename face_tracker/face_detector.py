@@ -13,11 +13,20 @@ class FaceDetector:
         self.scale = scale
 
     def __call__(self, frame_batch: List[np.array]) -> Tuple[List[np.array], List[np.array]]:
-        frames = [cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), None, fx=self.scale, fy=self.scale)
-                  for frame in frame_batch if frame is not None]
-        bbox_batch, _, kpts_batch = self.model.detect(frames, landmarks=True)
+        frames = [
+            cv2.resize(
+                cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
+                None,
+                fx=self.scale,
+                fy=self.scale)
+            for frame in frame_batch if frame is not None]
 
-        bbox_batch = [b / self.scale if b is not None else [] for b in bbox_batch]
-        kpts_batch = [p / self.scale if p is not None else [] for p in kpts_batch]
+        bounding_box_batch, _, key_points_batch = self.model.detect(frames, landmarks=True)
 
-        return bbox_batch, kpts_batch
+        bounding_box_batch = [b / self.scale if b is not None else [] for b in bounding_box_batch]
+        key_points_batch = [p / self.scale if p is not None else [] for p in key_points_batch]
+
+        return bounding_box_batch, key_points_batch
+
+    def set_scale(self, scale: float):
+        self.scale = scale

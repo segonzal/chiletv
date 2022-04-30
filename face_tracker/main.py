@@ -1,90 +1,74 @@
 import json
 import time
-import platform
+import random
 from pathlib import Path
 
-import cv2
 import argh
 import tqdm
-import torch
 
-# from tracker import Tracker
+from utils import *
 from face_detector import FaceDetector
 from video_reader import BatchedVideoReader
-from utils import get_content_descriptor, get_content_descriptor_distance
-
-
-# def get_video_url(filename: Path) -> str:
-#     """Returns the url of the downloaded video."""
-#     filename = filename.parent / (filename.stem + '.info.json')
-#     with filename.open('r', encoding='utf8') as fp:
-#         obj = json.load(fp)
-#         return obj['webpage_url']
 
 
 def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
     """Detects faces and its key points for each batch of frames."""
     for frame_batch, timestamp_batch in reader.read_batch():
-        bbox_batch, key_points_batch = detector(frame_batch)
-        for frame, timestamp, bbox, key_points in zip(frame_batch, timestamp_batch, bbox_batch, key_points_batch):
-            yield frame, timestamp, bbox, key_points
+        bounding_box_batch, key_points_batch = detector(frame_batch)
+        for frame, timestamp, bounding_box, key_points in zip(frame_batch,
+                                                              timestamp_batch,
+                                                              bounding_box_batch,
+                                                              key_points_batch):
+            yield frame, timestamp, bounding_box, key_points
 
 
-# def get_data(tracker, reader, detector):
-#     """Gets the tracked data."""
-#     with tqdm.tqdm(total=int(reader.get_duration()), leave=False) as loop:
-#         for frame, timestamp, bbox, kpts in get_detections(reader, detector):
-#             loop.update(int(timestamp - loop.n))
-#             tracker.filter_by_timestamp(timestamp)
-#             tracker.detect_shot_transition(frame)
-#             curr_face_ids = tracker.match_boxes(bbox, timestamp)
-#             yield timestamp, bbox, kpts, curr_face_ids
+@argh.arg('src_folder', help='Source folder for the detections.')
+@argh.arg('dst_folder', help='Destination folder for the tracks.')
+@argh.arg('sample_size', help='Sample size.')
+@argh.arg('--seed', help='Seed for the RNG.')
+def sample_videos(src_folder: str,
+                  dst_folder: str,
+                  sample_size: int,
+                  seed: int = 0):
+    src_folder = Path(src_folder)
+    dst_folder = Path(dst_folder)
 
+    dst_folder.mkdir(exist_ok=True)
+    all_files = list(src_folder.glob('**/*.mp4'))
 
-# def remove_empty_detections(data, keep_ids):
-#     """Removes the frames with no detections from the registry."""
-#     i = 0
-#     while i < len(data):
-#         timestamp, bbox, kpts, face_ids = data[i].values()
-#
-#         j = 0
-#         while j < len(face_ids):
-#             if face_ids[j] in keep_ids:
-#                 j += 1
-#             else:
-#                 del bbox[j]
-#                 del kpts[j]
-#                 del face_ids[j]
-#
-#         if len(bbox) == 0:
-#             del data[i]
-#         else:
-#             i += 1
+    random.seed(seed)
+    loop = tqdm.tqdm(random.sample(all_files, sample_size))
+
+    for file_path in loop:
+        loop.set_description(file_path.name)
+        file_path.rename(dst_folder / file_path.name)
 
 
 @argh.arg('src_folder', help='Source folder for the videos.')
 @argh.arg('dst_folder', help='Destination folder for the detections.')
-@argh.arg('--frame-rate', help='Frame rate to read videos.')
-@argh.arg('--batch-size', help='Batch size for the face detector.')
-@argh.arg('--min-face-size', help='Minimum size of a face required by the face detector.')
-@argh.arg('--detector-scale', help='Scaling factor for any image given to the face detector.')
-@argh.arg('--use-gpu', help='Whether the face detector should use the GPU.')
+@argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
+@argh.arg('--batch-size', default=1024, help='Batch size for the face detector.')
+@argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
+@argh.arg('--frame-size', default=640, help='Max size for a frame.')
+@argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 def detect_faces(src_folder: str,
                  dst_folder: str,
                  frame_rate: float = 30.0,
                  batch_size: int = 1024,
                  min_face_size: int = 20,
-                 detector_scale: float = 0.125,
-                 use_gpu: bool = True):
+                 frame_size: int = 640,
+                 use_cpu: bool = False):
     src_folder = Path(src_folder)
     dst_folder = Path(dst_folder)
 
+    dst_folder.mkdir(exist_ok=True)
+
     all_videos = list(src_folder.glob('**/*.mp4'))
-    done_videos = set(v.stem[:v.stem.rindex('.')] for v in dst_folder.glob('**/*.detections.json'))
-    ongoing_videos = [v for v in all_videos if v.stem not in done_videos]
+    done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
+    ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
 
     reader = BatchedVideoReader(frame_rate, batch_size)
-    detector = FaceDetector(min_face_size, use_gpu, scale=detector_scale)
+    detector = FaceDetector(min_face_size, not use_cpu)
 
     with tqdm.tqdm(sorted(ongoing_videos), total=len(all_videos), initial=len(done_videos)) as main_loop:
         for video_path in main_loop:
@@ -93,30 +77,36 @@ def detect_faces(src_folder: str,
             data = dict(frame_rate=frame_rate,
                         batch_size=batch_size,
                         min_face_size=min_face_size,
-                        detector_scale=detector_scale,
-                        use_gpu=use_gpu,
-                        gpu_device_name=torch.cuda.get_device_name(0),
-                        platform=platform.processor())
+                        frame_size=frame_size)
             try:
                 reader.start(str(video_path))
-                data['width'], data['height'] = reader.get_shape()
+                width, height = reader.get_shape()
+
+                detector.set_scale(float(max(width, height)) / float(frame_size))
+
+                data['width'] = width
+                data['height'] = height
                 data['video_length'] = reader.get_duration()
+                data['time'] = []
+                data['content_delta'] = []
+                data['bounding_box'] = []
+                data['key_points'] = []
 
                 # Get the time spent detecting and tracking boxes
-                data['detections'] = []
                 start_time = time.time()
                 with tqdm.tqdm(total=int(reader.get_duration()), leave=False) as mini_loop:
                     prev_descriptor = 0
-                    for frame, timestamp, bbox, key_points in get_detections(reader, detector):
+                    for frame, timestamp, bounding_box, key_points in get_detections(reader, detector):
                         mini_loop.update(int(timestamp - mini_loop.n))
 
                         descriptor = get_content_descriptor(frame)
                         content_delta = get_content_descriptor_distance(descriptor, prev_descriptor)
-                        data['detections'].append(dict(time=timestamp,
-                                                       content=content_delta,
-                                                       bbox=bbox,
-                                                       keypoints=key_points))
                         prev_descriptor = descriptor
+
+                        data['time'].append(timestamp)
+                        data['content_delta'].append(content_delta)
+                        data['bounding_box'].append(bounding_box)
+                        data['key_points'].append(key_points)
                 end_time = time.time()
                 data['detection_length'] = end_time - start_time
 
@@ -126,132 +116,32 @@ def detect_faces(src_folder: str,
 
             # Write detection file
             with (dst_folder / f'{video_path.stem}.detections.json').open('w', encoding='utf8') as wp:
-                json.dump(data, wp, indent=4)
+                json.dump(data, wp, indent=4, cls=NumpyEncoder)
 
 
-# @argh.arg('src', help='Source folder for the videos.')
-# @argh.arg('--dst', help='Destination folder for the tracks.')
-# @argh.arg('--frame-rate', help='Frame rate to read videos.')
-# @argh.arg('--batch-size', help='Batch size for the face detector.')
-# @argh.arg('--content-threshold', help='Threshold for the shot-transition detector.')
-# @argh.arg('--iou-threshold', help='Threshold for the IOU overlap between different-frame detections.')
-# @argh.arg('--max-time-gap-length', help='Maximum allowed gap in seconds between corresponding detections.')
-# @argh.arg('--min-shot-length', help='Minimum duration in seconds for a valid track.')
-# @argh.arg('--min-face-size', help='Minimum size of a face required by the face detector.')
-# @argh.arg('--detector-scale', help='Scaling factor for any image given to the face detector.')
-# @argh.arg('--use-gpu', help='Whether the face detector should use the GPU.')
-# def main(src: str,
-#          dst: str = None,
-#          frame_rate: float = 30.0,
-#          batch_size: int = 1024,
-#          content_threshold: float = 90.0,
-#          iou_threshold: float = 0.5,
-#          max_time_gap_length: float = 1.0,
-#          min_shot_length: float = 10.0,
-#          min_face_size: int = 20,
-#          detector_scale: float = 0.125,
-#          use_gpu: bool = True):
-#     root = Path(src)
-#     if dst is not None:
-#         dst = Path(dst)
-#         dst.mkdir(exist_ok=True)
-#
-#     with (dst / 'config.json').open('w', encoding='utf8') as wp:
-#         json.dump(dict(frame_rate=frame_rate,
-#                        batch_size=batch_size,
-#                        content_threshold=content_threshold,
-#                        iou_threshold=iou_threshold,
-#                        max_time_gap_length=max_time_gap_length,
-#                        min_shot_length=min_shot_length,
-#                        min_face_size=min_face_size,
-#                        detector_scale=detector_scale,
-#                        use_gpu=use_gpu,
-#                        gpu_device_name=torch.cuda.get_device_name(0),
-#                        platform=platform.processor()), wp, indent=4)
-#
-#     reader = BatchedVideoReader(frame_rate, batch_size)
-#     detector = FaceDetector(min_face_size, use_gpu, scale=detector_scale)
-#     tracker = Tracker(content_threshold, iou_threshold, max_time_gap_length)
-#
-#     all_videos = list(root.glob('**/*.mp4'))
-#     pending_videos = [v for v in all_videos
-#                       if not ((v.parent if dst is None else dst) / (v.stem + '.tracks.json')).exists()]
-#     total_iterations = len(all_videos)
-#     initial_iterations = (len(all_videos) - len(pending_videos))
-#     loop = tqdm.tqdm(sorted(pending_videos), total=total_iterations, initial=initial_iterations)
-#
-#     for filename in loop:
-#         loop.set_description(str(filename))
-#
-#         try:
-#             reader.start(str(filename))
-#             width, height = reader.get_shape()
-#             video_duration = reader.get_duration()
-#
-#             video_url = get_video_url(filename)
-#             tracker.reset()
-#
-#             # Get the time spent detecting and tracking boxes
-#             start_time = time.time()
-#             data = list(get_data(tracker, reader, detector))
-#             end_time = time.time()
-#
-#         except (cv2.error, ZeroDivisionError) as err:
-#             continue
-#
-#         # Remove all frames without detections or too short
-#         data = [dict(time=timestamp,
-#                      bbox=[b.flatten().tolist() for b in bbox],
-#                      kpts=[k.flatten().tolist() for k in kpts],
-#                      faceid=face_ids)
-#                 for timestamp, bbox, kpts, face_ids in data]
-#
-#         # Get metadata of each tracked face
-#         tracks = {}
-#         for frame_data in data:
-#             timestamp = frame_data['time']
-#             for face_id, bbox, kpts in zip(frame_data['faceid'], frame_data['bbox'], frame_data['kpts']):
-#                 if face_id not in tracks:
-#                     tracks[face_id] = dict(start_time=timestamp, end_time=timestamp, time=[], bbox=[], kpts=[])
-#                 else:
-#                     tracks[face_id]['end_time'] = max(timestamp, tracks[face_id]['end_time'])
-#
-#                 tracks[face_id]['time'].append(timestamp)
-#                 tracks[face_id]['bbox'].append(bbox)
-#                 tracks[face_id]['kpts'].append(kpts)
-#
-#         tracks = {fid: tms for fid, tms in tracks.items() if tms['end_time'] - tms['start_time'] > min_shot_length}
-#
-#         # remove_empty_detections(data, tracks)
-#
-#         data = {
-#             'url': video_url,
-#             'frame_rate': frame_rate,
-#             'video_duration': video_duration,
-#             'detection_duration': end_time - start_time,
-#             'width': width,
-#             'height': height,
-#             'tracks': tracks,
-#         }
-#
-#         json_dst = filename.parent if dst is None else dst
-#         with (json_dst / (filename.stem + '.tracks.json')).open('w', encoding='utf8') as wp:
-#             json.dump(data, wp, indent=1)
+@argh.arg('src_folder', help='Source folder for the detections.')
+@argh.arg('dst_folder', help='Destination folder for the tracks.')
+@argh.arg('--content-threshold', help='Threshold for the shot-transition detector.')
+@argh.arg('--iou-threshold', help='Threshold for the IOU overlap between different-frame detections.')
+@argh.arg('--max-gap-length', help='Maximum allowed gap in seconds between corresponding detections.')
+@argh.arg('--min-shot-length', help='Minimum duration in seconds for a valid track.')
+def track_detections(src_folder: str,
+                     dst_folder: str,
+                     content_threshold: float = 90.0,
+                     iou_threshold: float = 0.5,
+                     max_gap_length: float = 1.0,
+                     min_shot_length: float = 10.0):
+    src_folder = Path(src_folder)
+    dst_folder = Path(dst_folder)
 
+    all_detections = list(src_folder.glob('**/*.detections.json'))
+    done_detections = set(video_id(v.name) for v in dst_folder.glob('**/*.tracks.json'))
+    ongoing_detections = [v for v in all_detections if video_id(v.name) not in done_detections]
 
-# def get_sample(src, dst, num):
-#     import random
-#     random.seed(0)
-#     src = Path(src)
-#     dst = Path(dst)
-#     dst.mkdir(exist_ok=True)
-#     all_files = list(src.glob('**/*.mp4'))
-#     loop = tqdm.tqdm(random.sample(all_files, num))
-#     for file in loop:
-#         file = file.parent
-#         loop.set_description(str(file))
-#         file.rename(dst / file.name)
+    with tqdm.tqdm(sorted(ongoing_detections), total=len(all_detections), initial=len(done_detections)) as main_loop:
+        for detection_path in main_loop:
+            main_loop.set_description(video_id(detection_path))
 
 
 if __name__ == "__main__":
-    argh.dispatch_commands([detect_faces])
+    argh.dispatch_commands([sample_videos, detect_faces, track_detections])
