@@ -8,79 +8,76 @@ import argh
 from tqdm import tqdm
 
 
-def work(src_file: Path, video_id: str, dst_folder: Path, raw_folder: Path, lock: Lock, loop: tqdm):
-	# Leve a register of wich file is being processed
-	lock.acquire()
-	loop.write(str(src_file))
-	lock.release()
+def work(video_folder: Path, dataset_folder: Path, lock: Lock, loop: tqdm):
+    video_id = video_folder.name
 
-	cmd = [
-		'ffmpeg', '-i', str(src_file), '-v', 'quiet',
-		'-map', '0:a', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000', str(src_file.parent / (video_id + '.wav')),
-		'-map', '0:v', '-vcodec', 'h264', '-filter:v', 'fps=30', str(src_file.parent / (video_id + '.mp4'))
-	]
+    # Leave a record of which file is being processed
+    lock.acquire()
+    loop.write(video_id)
+    lock.release()
 
-	p = subprocess.Popen(cmd)
-	p.wait()
+    paths = {
+        'info': video_folder / 'original.info.json',
+        'original': video_folder / 'original.mp4',
+        'video': video_folder / 'video.mp4',
+        'audio': video_folder / 'audio.wav',
+    }
 
-	# Move the original video to raw
-	src_file.rename(raw_folder / (video_id + '.mp4'))
-	
-	# Move the parent folder to dst
-	src_file.parent.rename(dst_folder / video_id)
+    cmd = 'ffmpeg -i {original} -v quiet' + \
+          '-map 0:a -acodec pcm_s16le -ac 1 -ar 16000 {audio}' + \
+          '-map 0:v -vcodec h264 -filter:v fps=30 {video}'
+    cmd = cmd.format_map(paths)
 
-	# Update progress bar
-	lock.acquire()
-	loop.update()
-	lock.release()
+    p = subprocess.Popen(cmd)
+    p.wait()
+
+    # Move completed files
+    for key, path in paths.items():
+        path.rename(dataset_folder / key / (video_id + path.name[path.name.index('.'):]))
+
+    # Delete emptied video folder
+    try:
+        video_folder.rmdir()
+    except OSError as err:
+        lock.acquire()
+        loop.write(f'Error: {video_folder} is not empty.')
+        lock.release()
+
+    # Update progress bar
+    lock.acquire()
+    loop.update()
+    lock.release()
 
 
-@argh.arg('src_folder', help='Folder with the videos to recode.')
-@argh.arg('dst_folder', help='Destination for recoded videos.')
-@argh.arg('raw_folder', help='Destination for original videos.')
+@argh.arg('downloads_folder', help='Folder with the videos to recode.')
+@argh.arg('dataset_folder', help='Destination for recoded videos.')
 @argh.arg('-n', '--num', type=int, default=0, help='Number of videos.')
 @argh.arg('-p', '--proc', type=int, default=1, help='Number of processes.')
-@argh.arg('-x', '--prefix', type=str, default='original-', help='Prefix to rename original files.')
-def main(src_folder: str, dst_folder: str, raw_folder: str, num: int=0, proc: int=1, prefix: str='original-'):
-	# src: str, dst:str, num: int, prefix: str = 'original-', rename: int=None):
-	src_folder = Path(src_folder)
-	dst_folder = Path(dst_folder)
-	raw_folder = Path(raw_folder)
+def main(downloads_folder: str, dataset_folder: str, num: int = 0, proc: int = 1):
+    downloads_folder = Path(downloads_folder)
+    dataset_folder = Path(dataset_folder)
 
-	source_files = src_folder.glob('**/*.mp4')
+    video_folders = downloads_folder.glob('*')
 
-	if num != 0:
-		source_files = islice(source_files, num)
+    if num != 0:
+        video_folders = islice(video_folders, num)
 
-	source_files = list(source_files)
+    video_folders = list(video_folders)
 
-	tp = ThreadPool(proc)
-	tl = Lock()
-	loop = tqdm(total=len(source_files))
+    tp = ThreadPool(proc)
+    tl = Lock()
+    loop = tqdm(total=len(video_folders))
 
-	try:
-		for src_file in source_files:
-			video_id = src_file.stem
-
-			# Renames the original video if it was not renamed already
-			if not src_file.name.startswith(prefix):
-				new_name = src_file.parent / (prefix + src_file.name)
-				if new_name.exists():
-					raise Exception('File "{new_name}" already exists')
-				src_file.rename(new_name)
-				src_file = new_name
-			else:
-				video_id = video_id[len(prefix):]
-
-			tp.apply_async(work, (src_file, video_id, dst_folder, raw_folder, tl, loop))
-		
-		tp.close()
-		tp.join()
-	except KeyboardInterrupt:
-		tp.terminate()
-	finally:
-		print('Done!')
+    try:
+        for video_folder in video_folders:
+            tp.apply_async(work, (video_folder, dataset_folder, tl, loop))
+        tp.close()
+        tp.join()
+    except KeyboardInterrupt:
+        tp.terminate()
+    finally:
+        loop.write('Done!')
 
 
 if __name__ == '__main__':
-	argh.dispatch_command(main)
+    argh.dispatch_command(main)
