@@ -73,10 +73,10 @@ class VideoReader:
         return self.stream.get(cv2.CAP_PROP_FRAME_COUNT) / self.stream.get(cv2.CAP_PROP_FPS)
 
 
-class BatchedVideoReader(VideoReader):
+class AdaptableBatchedVideoReader(VideoReader):
     def __init__(self, frame_rate: float, batch_size: int, transform: Callable = None, maxsize: int = 128):
-        super(BatchedVideoReader, self).__init__(frame_rate, transform, maxsize)
-        self.batch_size = batch_size
+        super(AdaptableBatchedVideoReader, self).__init__(frame_rate, transform, maxsize)
+        self._batch_size = batch_size
 
     def read_batch(self):
         frame_batch = []
@@ -89,3 +89,18 @@ class BatchedVideoReader(VideoReader):
 
         if len(frame_batch) > 0:
             yield tuple(zip(*frame_batch))
+
+    @property
+    def batch_size(self) -> int:
+        # _batch_size is for images of 32x32
+        # returned batch size is for the actual images
+        width, height = self.get_shape()
+        batch_size = int((width * height * self._batch_size) / (512 * 512))
+        # batch_size = min(batch_size, 256)
+        return batch_size
+
+
+class BatchedVideoReader(AdaptableBatchedVideoReader):
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size

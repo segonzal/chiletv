@@ -8,10 +8,10 @@ import tqdm
 
 from utils import *
 from face_detector import FaceDetector
-from video_reader import BatchedVideoReader
+from video_reader import BatchedVideoReader, AdaptableBatchedVideoReader
 
 
-def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
+def get_detections(reader: AdaptableBatchedVideoReader, detector: FaceDetector):
     """Detects faces and its key points for each batch of frames."""
     for frame_batch, timestamp_batch in reader.read_batch():
         bounding_box_batch, key_points_batch = detector(frame_batch)
@@ -49,14 +49,14 @@ def sample_videos(src_folder: str,
 @argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
 @argh.arg('--batch-size', default=1024, help='Batch size for the face detector.')
 @argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
-@argh.arg('--frame-size', default=640, help='Max size for a frame.')
+@argh.arg('--max-frame-size', default=None, help='Max size for a frame.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 def detect_faces(src_folder: str,
                  dst_folder: str,
                  frame_rate: float = 30.0,
                  batch_size: int = 1024,
                  min_face_size: int = 20,
-                 frame_size: int = 640,
+                 max_frame_size: int = None,
                  use_cpu: bool = False):
     src_folder = Path(src_folder)
     dst_folder = Path(dst_folder)
@@ -67,35 +67,41 @@ def detect_faces(src_folder: str,
     done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
     ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
 
-    reader = BatchedVideoReader(frame_rate, batch_size)
+    reader = AdaptableBatchedVideoReader(frame_rate, batch_size)
     detector = FaceDetector(min_face_size, not use_cpu)
+    detector.set_scale(1.0)
 
     with tqdm.tqdm(sorted(ongoing_videos), total=len(all_videos), initial=len(done_videos)) as main_loop:
         for video_path in main_loop:
             main_loop.set_description(video_path.name)
 
-            data = dict(frame_rate=frame_rate,
-                        batch_size=batch_size,
-                        min_face_size=min_face_size,
-                        frame_size=frame_size)
             try:
                 reader.start(str(video_path))
                 width, height = reader.get_shape()
 
-                detector.set_scale(float(frame_size) / float(max(width, height)))
+                if max_frame_size:
+                    detector.set_scale(float(max_frame_size) / float(max(width, height)))
 
-                data['width'] = width
-                data['height'] = height
-                data['video_length'] = reader.get_duration()
-                data['time'] = []
-                data['content_delta'] = []
-                data['bounding_box'] = []
-                data['key_points'] = []
+                data = {
+                    'frame_rate': frame_rate,
+                    'batch_size': batch_size,
+                    'min_face_size': min_face_size,
+                    'max_frame_size': max_frame_size,
+                    'adapted_batch_size': reader.batch_size,
+                    'width': width,
+                    'height': height,
+                    'video_length': reader.get_duration(),
+                    'time': [],
+                    'content_delta': [],
+                    'bounding_box': [],
+                    'key_points': []
+                }
 
                 # Get the time spent detecting and tracking boxes
-                start_time = time.time()
                 with tqdm.tqdm(total=int(reader.get_duration()), leave=False) as mini_loop:
+                    mini_loop.set_postfix(batch_size=reader.batch_size)
                     prev_descriptor = 0
+                    start_time = time.time()
                     for frame, timestamp, bounding_box, key_points in get_detections(reader, detector):
                         mini_loop.update(int(timestamp - mini_loop.n))
 
@@ -107,8 +113,8 @@ def detect_faces(src_folder: str,
                         data['content_delta'].append(content_delta)
                         data['bounding_box'].append(bounding_box)
                         data['key_points'].append(key_points)
-                end_time = time.time()
-                data['detection_length'] = end_time - start_time
+                    end_time = time.time()
+                    data['detection_length'] = end_time - start_time
 
             except (cv2.error, ZeroDivisionError) as err:
                 main_loop.write(f'An error has occurred for video "{video_path}"')
