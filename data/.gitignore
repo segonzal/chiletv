@@ -1,6 +1,6 @@
 *
 !.gitignore
-!video_metadata.csv
+!dataset_durations.csv
 !test_tracks@30FPS/
 !test_tracks@30FPS/*
 !test_tracks@15FPS/
