@@ -2,16 +2,18 @@ import json
 import time
 import random
 from pathlib import Path
+from typing import Union
 
 import argh
 import tqdm
+import numpy as np
 
 from utils import *
 from face_detector import FaceDetector
-from video_reader import BatchedVideoReader, AdaptableBatchedVideoReader
+from video_reader import BatchedVideoReader
 
 
-def get_detections(reader: AdaptableBatchedVideoReader, detector: FaceDetector):
+def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
     """Detects faces and its key points for each batch of frames."""
     for frame_batch, timestamp_batch in reader.read_batch():
         bounding_box_batch, key_points_batch = detector(frame_batch)
@@ -44,17 +46,44 @@ def sample_videos(src_folder: str,
         file_path.rename(dst_folder / file_path.name)
 
 
+def find_batch_size(width: int, height: int, detector: FaceDetector):
+    # increase batch size x2 until error
+    batch_size = 1
+    while True:
+        try:
+            image = (256 * np.random.random((batch_size, width, height, 3))).astype(np.uint8)
+            detector(image)
+        except RuntimeError as err:
+            break
+        batch_size *= 2
+
+    upper_bound = batch_size
+    lower_bound = batch_size // 2
+    # The upper bound is error, the lower correct
+    # get the middle value, if error: try again
+    while upper_bound - lower_bound > 2:
+        batch_size = (upper_bound + lower_bound) // 2
+        try:
+            image = (256 * np.random.random((batch_size, width, height, 3))).astype(np.uint8)
+            detector(image)
+        except RuntimeError as err:
+            upper_bound = batch_size
+        else:
+            lower_bound = batch_size
+    return lower_bound
+
+
 @argh.arg('src_folder', help='Source folder for the videos.')
 @argh.arg('dst_folder', help='Destination folder for the detections.')
 @argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
-@argh.arg('--batch-size', default=1024, help='Batch size for the face detector.')
+@argh.arg('--batch-size', default='auto', help='Batch size for the face detector.')
 @argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
 @argh.arg('--max-frame-size', default=None, help='Max size for a frame.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 def detect_faces(src_folder: str,
                  dst_folder: str,
                  frame_rate: float = 30.0,
-                 batch_size: int = 1024,
+                 batch_size: Union[int, str] = 'auto',
                  min_face_size: int = 20,
                  max_frame_size: int = None,
                  use_cpu: bool = False):
@@ -67,7 +96,7 @@ def detect_faces(src_folder: str,
     done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
     ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
 
-    reader = AdaptableBatchedVideoReader(frame_rate, batch_size)
+    reader = BatchedVideoReader(frame_rate)
     detector = FaceDetector(min_face_size, not use_cpu)
     detector.set_scale(1.0)
 
@@ -76,18 +105,23 @@ def detect_faces(src_folder: str,
             main_loop.set_description(video_path.name)
 
             try:
-                reader.start(str(video_path))
+                reader.open(str(video_path))
                 width, height = reader.get_shape()
+
+                if batch_size == 'auto':
+                    reader.set_batch_size(int(0.9 * find_batch_size(width, height, detector)))
+                else:
+                    reader.set_batch_size(batch_size)
+                reader.start()
 
                 if max_frame_size:
                     detector.set_scale(float(max_frame_size) / float(max(width, height)))
 
                 data = {
                     'frame_rate': frame_rate,
-                    'batch_size': batch_size,
+                    'batch_size': reader.batch_size,
                     'min_face_size': min_face_size,
                     'max_frame_size': max_frame_size,
-                    'adapted_batch_size': reader.batch_size,
                     'width': width,
                     'height': height,
                     'video_length': reader.get_duration(),

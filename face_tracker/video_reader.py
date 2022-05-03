@@ -14,14 +14,19 @@ class VideoReader:
         self.frame_queue = Queue(maxsize=maxsize)
         self.stopped = False
         self.thread = None
+        self._width = None
+        self._height = None
 
-    def start(self, filename: Union[str, Path]):
+    def open(self, filename: Union[str, Path]):
         if isinstance(filename, Path):
             filename = str(filename)
         self.stream.open(filename)
         self.stream.set(cv2.CAP_PROP_FPS, self.frame_rate)
         self.stopped = False
 
+        self.get_shape(True)
+
+    def start(self):
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
         self.thread.start()
@@ -64,19 +69,20 @@ class VideoReader:
     def running(self):
         return self.more() or not self.stopped
 
-    def get_shape(self) -> Tuple[int, int]:
-        width = self.stream.get(cv2.CAP_PROP_FRAME_WIDTH)
-        height = self.stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        return int(width), int(height)
+    def get_shape(self, force: bool = False) -> Tuple[int, int]:
+        if force:
+            self._width = self.stream.get(cv2.CAP_PROP_FRAME_WIDTH)
+            self._height = self.stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        return int(self._width), int(self._height)
 
     def get_duration(self) -> float:
         return self.stream.get(cv2.CAP_PROP_FRAME_COUNT) / self.stream.get(cv2.CAP_PROP_FPS)
 
 
-class AdaptableBatchedVideoReader(VideoReader):
-    def __init__(self, frame_rate: float, batch_size: int, transform: Callable = None, maxsize: int = 128):
-        super(AdaptableBatchedVideoReader, self).__init__(frame_rate, transform, maxsize)
-        self._batch_size = batch_size
+class BatchedVideoReader(VideoReader):
+    def __init__(self, frame_rate: float, batch_size: int = 1, transform: Callable = None, maxsize: int = 128):
+        super(BatchedVideoReader, self).__init__(frame_rate, transform, maxsize)
+        self.batch_size = batch_size
 
     def read_batch(self):
         frame_batch = []
@@ -90,17 +96,5 @@ class AdaptableBatchedVideoReader(VideoReader):
         if len(frame_batch) > 0:
             yield tuple(zip(*frame_batch))
 
-    @property
-    def batch_size(self) -> int:
-        # _batch_size is for images of 32x32
-        # returned batch size is for the actual images
-        width, height = self.get_shape()
-        batch_size = int((width * height * self._batch_size) / (512 * 512))
-        # batch_size = min(batch_size, 256)
-        return batch_size
-
-
-class BatchedVideoReader(AdaptableBatchedVideoReader):
-    @property
-    def batch_size(self) -> int:
-        return self._batch_size
+    def set_batch_size(self, batch_size: int):
+        self.batch_size = batch_size
