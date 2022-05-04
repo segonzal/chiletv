@@ -109,7 +109,7 @@ def detect_faces(src_folder: str,
                 width, height = reader.get_shape()
 
                 if batch_size == 'auto':
-                    reader.set_batch_size(int(0.9 * find_batch_size(width, height, detector)))
+                    reader.set_batch_size(find_batch_size(width, height, detector))
                 else:
                     reader.set_batch_size(batch_size)
                 reader.start()
