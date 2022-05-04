@@ -22,10 +22,10 @@ class Tracker:
     def __init__(self,
                  content_threshold: float,
                  iou_threshold: float,
-                 max_time_gap_length: float):
+                 max_gap_length: float):
         self.content_threshold = content_threshold
         self.iou_threshold = iou_threshold
-        self.max_time_gap_length = max_time_gap_length
+        self.max_gap_length = max_gap_length
 
         self.tracked_boxes = []
         self.last_id = 0
@@ -35,7 +35,7 @@ class Tracker:
         """Filters the boxes by timestamp in place."""
         i = 0
         while i < len(self.tracked_boxes):
-            if timestamp - self.tracked_boxes[i]['end_timestamp'] > self.max_time_gap_length:
+            if timestamp - self.tracked_boxes[i]['end_timestamp'] > self.max_gap_length:
                 del self.tracked_boxes[i]
             else:
                 i += 1
@@ -91,12 +91,9 @@ class Tracker:
 
         return new_boxes_id
 
-    def detect_shot_transition(self, frame):
-        descriptor = get_content_descriptor(frame)
-        content_delta = get_content_descriptor_distance(descriptor, self.last_descriptor)
+    def detect_shot_transition(self, content_delta: float):
         if content_delta < self.content_threshold:
             self.tracked_boxes.clear()
-        self.last_descriptor = descriptor
 
     def reset(self):
         self.last_descriptor = 0
