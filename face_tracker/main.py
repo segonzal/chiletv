@@ -81,13 +81,15 @@ def find_batch_size(width: int, height: int, detector: FaceDetector):
 @argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
 @argh.arg('--max-frame-size', default=None, help='Max size for a frame.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
+@argh.arg('-r', '--randomize', action='store_true', help='Randomize the order of files.')
 def detect_faces(src_folder: str,
                  dst_folder: str,
                  frame_rate: float = 30.0,
                  batch_size: Union[int, str] = 'auto',
                  min_face_size: int = 20,
                  max_frame_size: int = None,
-                 use_cpu: bool = False):
+                 use_cpu: bool = False,
+                 randomize: bool = False):
     src_folder = Path(src_folder)
     dst_folder = Path(dst_folder)
 
@@ -99,13 +101,16 @@ def detect_faces(src_folder: str,
     else:
         all_videos = list(src_folder.glob('**/*.mp4'))
         done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
-        ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
+        ongoing_videos = sorted([v for v in all_videos if video_id(v.name) not in done_videos])
+        
+    if randomize:
+        random.shuffle(ongoing_videos)
 
     reader = BatchedVideoReader(frame_rate)
     detector = FaceDetector(min_face_size, not use_cpu)
     detector.set_scale(1.0)
 
-    with tqdm.tqdm(sorted(ongoing_videos), total=len(all_videos), initial=len(done_videos)) as main_loop:
+    with tqdm.tqdm(ongoing_videos, total=len(all_videos), initial=len(done_videos)) as main_loop:
         for video_path in main_loop:
             main_loop.set_description(video_path.name)
 
