@@ -153,6 +153,9 @@ def detect_faces(src_folder: str,
             except (cv2.error, ZeroDivisionError) as err:
                 main_loop.write(f'An error has occurred for video "{video_path}"')
                 continue
+            except RuntimeError as err:
+                main_loop.write(f'GPU Memory error for video "{video_path}" with batch size: {reader.batch_size}')
+                continue
 
             # Write detection file
             with (dst_folder / f'{video_path.stem}.detections.json').open('w', encoding='utf8') as wp:
