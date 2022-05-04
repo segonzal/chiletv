@@ -160,6 +160,7 @@ def detect_faces(src_folder: str,
                 continue
             except RuntimeError as err:
                 main_loop.write(f'GPU Memory error for video "{video_path}" with batch size: {reader.batch_size}')
+                reader.stop()
                 continue
 
             # Write detection file
