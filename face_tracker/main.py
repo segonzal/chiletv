@@ -74,7 +74,7 @@ def find_batch_size(width: int, height: int, detector: FaceDetector):
     return lower_bound
 
 
-@argh.arg('src_folder', help='Source folder for the videos.')
+@argh.arg('src_folder', help='Source file or folder with the videos.')
 @argh.arg('dst_folder', help='Destination folder for the detections.')
 @argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
 @argh.arg('--batch-size', default='auto', help='Batch size for the face detector.')
@@ -93,9 +93,13 @@ def detect_faces(src_folder: str,
 
     dst_folder.mkdir(exist_ok=True)
 
-    all_videos = list(src_folder.glob('**/*.mp4'))
-    done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
-    ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
+    if src_folder.is_file():
+        done_videos = []
+        ongoing_videos = all_videos = [src_folder]
+    else:
+        all_videos = list(src_folder.glob('**/*.mp4'))
+        done_videos = set(video_id(v.name) for v in dst_folder.glob('**/*.detections.json'))
+        ongoing_videos = [v for v in all_videos if video_id(v.name) not in done_videos]
 
     reader = BatchedVideoReader(frame_rate)
     detector = FaceDetector(min_face_size, not use_cpu)
