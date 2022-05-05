@@ -26,6 +26,13 @@ class VideoReader:
 
         self.get_shape(True)
 
+    def clear(self):
+        # Empty the queue if there are any elements in it
+        with self.frame_queue.mutex:
+            self.frame_queue.queue.clear()
+            self.frame_queue.all_tasks_done.notify_all()
+            self.frame_queue.unfinished_tasks = 0
+
     def start(self):
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
@@ -42,6 +49,8 @@ class VideoReader:
         return frame, timestamp
 
     def update(self):
+        self.clear()
+
         ptime = 0
         dtime = 1.0 / self.frame_rate
         while not self.stopped:

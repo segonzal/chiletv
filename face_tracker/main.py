@@ -52,7 +52,7 @@ def find_batch_size(width: int, height: int, detector: FaceDetector):
     batch_size = 1
     while True:
         try:
-            image = (256 * np.random.random((batch_size, width, height, 3))).astype(np.uint8)
+            image = (255 * np.random.random((batch_size, width, height, 3))).astype(np.uint8)
             detector(image)
         except RuntimeError as err:
             break
@@ -119,7 +119,7 @@ def detect_faces(src_folder: str,
                 width, height = reader.get_shape()
 
                 if batch_size == 'auto':
-                    reader.set_batch_size(find_batch_size(width, height, detector))
+                    reader.set_batch_size(min(1024, find_batch_size(width, height, detector)))
                 else:
                     reader.set_batch_size(batch_size)
                 reader.start()
