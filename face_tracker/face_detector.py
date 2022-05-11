@@ -7,10 +7,14 @@ from facenet_pytorch import MTCNN
 
 
 class FaceDetector:
-    def __init__(self, min_face_size: int, use_gpu: bool, scale: float = 1.0):
+    def __init__(self, min_face_size: int, max_frame_size: int, use_gpu: bool, scale: float = 1.0):
+        self.min_face_size = min_face_size
+        self.max_frame_size = max_frame_size
+        self.use_gpu = use_gpu
+        self.scale = scale
+
         device = torch.device('cuda:0' if use_gpu and torch.cuda.is_available() else 'cpu')
         self.model = MTCNN(min_face_size=min_face_size, keep_all=True, device=device)
-        self.scale = scale
 
     def __call__(self, frame_batch: List[np.array]) -> Tuple[List[np.array], List[np.array]]:
         frames = [
