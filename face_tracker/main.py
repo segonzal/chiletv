@@ -110,6 +110,9 @@ def detect_faces(src_folder: str,
     detector = FaceDetector(min_face_size, not use_cpu)
     detector.set_scale(1.0)
 
+    if batch_size.isnumeric():
+        batch_size = int(batch_size)
+
     with tqdm.tqdm(ongoing_videos, total=len(all_videos), initial=len(done_videos)) as main_loop:
         for video_path in main_loop:
             main_loop.set_description(video_path.name)
@@ -120,14 +123,15 @@ def detect_faces(src_folder: str,
                 reader.open(str(video_path))
                 width, height = reader.get_shape()
 
-                if curr_batch_size == 'auto':
-                    curr_batch_size = min(1024, find_batch_size(width, height, detector))
-
                 if max_frame_size and max_frame_size < max(width, height):
                     curr_scale = float(max_frame_size) / float(max(width, height))
 
-                reader.set_batch_size(curr_batch_size)
                 detector.set_scale(curr_scale)
+                
+                if curr_batch_size == 'auto':
+                    curr_batch_size = min(1024, find_batch_size(width, height, detector))
+
+                reader.set_batch_size(curr_batch_size)
                 reader.start()
 
                 data = {
