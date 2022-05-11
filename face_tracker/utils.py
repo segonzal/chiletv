@@ -3,7 +3,7 @@ import json
 import numpy as np
 
 
-def get_content_descriptor(frame, shape=(8,8)):
+def get_content_descriptor(frame, shape=(8, 8)):
     return cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2HSV), shape, interpolation=cv2.INTER_AREA).flatten()
 
 

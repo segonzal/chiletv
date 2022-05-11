@@ -191,17 +191,17 @@ def track_detections(src_folder: str,
     src_folder = Path(src_folder)
     dst_folder = Path(dst_folder)
 
+    dst_folder.mkdir(exist_ok=True)
+
     all_detections = list(src_folder.glob('**/*.detections.json'))
     done_detections = set(video_id(v.name) for v in dst_folder.glob('**/*.tracks.json'))
     ongoing_detections = [v for v in all_detections if video_id(v.name) not in done_detections]
 
-    tracker = Tracker(content_threshold, iou_threshold, max_gap_length)
+    tracker = Tracker(content_threshold, iou_threshold, max_gap_length, min_shot_length)
 
     with tqdm.tqdm(sorted(ongoing_detections), total=len(all_detections), initial=len(done_detections)) as main_loop:
         for detection_path in main_loop:
             main_loop.set_description(video_id(detection_path.name))
-
-            tracker.reset()
 
             with detection_path.open('r', encoding='utf8') as fp:
                 detection_data = json.load(fp)
@@ -210,32 +210,16 @@ def track_detections(src_folder: str,
                                  detection_data['content_delta'],
                                  detection_data['bounding_box'],
                                  detection_data['key_points'])
-            track_data = {}
 
             for timestamp, content_delta, bounding_box, key_points in detection_data:
-                tracker.filter_by_timestamp(timestamp)
-                tracker.detect_shot_transition(content_delta)
-                track_ids = tracker.match_boxes(bounding_box, timestamp)
-
-                for f_track_id, f_bounding_box, f_key_points in zip(track_ids, bounding_box, key_points):
-                    if f_track_id not in track_data:
-                        track_data[f_track_id] = dict(time=[], bounding_box=[], key_points=[])
-                    track_data[f_track_id]['time'].append(timestamp)
-                    track_data[f_track_id]['bounding_box'].append(f_bounding_box)
-                    track_data[f_track_id]['key_points'].append(f_key_points)
-
-            # Complete fields and delete short detections
-            for track_id in list(track_data.keys()):
-                track_data[track_id]['start_time'] = track_data[track_id]['time'][0]
-                track_data[track_id]['end_time'] = track_data[track_id]['time'][-1]
-                track_data[track_id]['duration'] = track_data[track_id]['end_time'] - track_data[track_id]['start_time']
-
-                if track_data[track_id]['duration'] < min_shot_length:
-                    del track_data[track_id]
+                tracker.update(timestamp, content_delta, bounding_box, key_points)
+            tracker.finish_all_tracks()
 
             # Write detection file
             with (dst_folder / f'{video_id(detection_path.name)}.tracks.json').open('w', encoding='utf8') as wp:
-                json.dump(track_data, wp, cls=NumpyEncoder)
+                json.dump(tracker.get_data(), wp, cls=NumpyEncoder)
+
+            tracker.reset()
 
 
 if __name__ == "__main__":
