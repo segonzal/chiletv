@@ -41,3 +41,19 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+
+
+def iou(bbox_a: np.float32, bbox_b: np.float32) -> float:
+    right = max(bbox_a[0], bbox_b[0])
+    top = max(bbox_a[1], bbox_b[1])
+    left = min(bbox_a[2], bbox_b[2])
+    bottom = min(bbox_a[3], bbox_b[3])
+
+    inter_area = max(0.0, left - right) * max(0.0, bottom - top)
+
+    bbox_a_area = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
+    bbox_b_area = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
+
+    union_area = bbox_a_area + bbox_b_area - inter_area
+
+    return inter_area / float(union_area)
