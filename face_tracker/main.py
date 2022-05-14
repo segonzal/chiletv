@@ -68,7 +68,7 @@ def detect_faces_on_video(reader, detector, batch_size, scale):
 
     # Get the time spent detecting and tracking boxes
     num_retry = 5
-    bz_frac = int(0.5 * batch_size)
+    bz_frac = int(0.05 * batch_size)
     while num_retry > 0:
         reader.set_batch_size(batch_size)
         reader.start()
