@@ -138,7 +138,7 @@ def sample_videos(src_folder: str,
 @argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
 @argh.arg('--batch-size', default='auto', help='Batch size for the face detector.')
 @argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
-@argh.arg('--max-frame-size', default=None, help='Max size for a frame.')
+@argh.arg('--max-frame-size', type=int, default=None, help='Max size for a frame.')
 @argh.arg('--frame-scale', default=1.0, help='Scaling factor for all frames.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 @argh.arg('-r', '--randomize', action='store_true', help='Randomize the order of files.')
@@ -180,7 +180,7 @@ def detect_faces(src_folder: str,
                 reader.open(str(video_path))
                 data = detect_faces_on_video(reader, detector, batch_size, frame_scale)
             except (cv2.error, ZeroDivisionError) as err:
-                main_loop.write(f'An error has occurred for video "{video_path}"')
+                main_loop.write(f'An error has occurred for video "{video_path}"\n\n{str(err)}\n\n')
             except RuntimeError as err:
                 main_loop.write(f'GPU Memory error for video "{video_path}" with batch size: {reader.batch_size}')
             else:
