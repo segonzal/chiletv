@@ -52,9 +52,6 @@ def find_batch_size(width: int, height: int, detector: FaceDetector):
     return lower_bound
 
 
-class BatchSizeError(Exception): pass
-
-
 def detect_faces_on_video(reader, detector, batch_size, scale):
     width, height = reader.get_shape()
 
@@ -68,8 +65,8 @@ def detect_faces_on_video(reader, detector, batch_size, scale):
 
     # Get the time spent detecting and tracking boxes
     num_retry = 5
-    bz_frac = int(0.05 * batch_size)
-    while num_retry > 0:
+    bz_frac = int(0.1 * batch_size) + 1
+    while True:
         reader.set_batch_size(batch_size)
         reader.start()
         data = {
@@ -106,11 +103,12 @@ def detect_faces_on_video(reader, detector, batch_size, scale):
         except RuntimeError as err:
             num_retry -= 1
             batch_size -= bz_frac
+            if num_retry <= 0:
+                raise err
         else:
             return data
         finally:
             reader.stop()
-    raise BatchSizeError()
 
 
 @argh.arg('src_folder', help='Source folder for the detections.')
@@ -183,7 +181,7 @@ def detect_faces(src_folder: str,
                 data = detect_faces_on_video(reader, detector, batch_size, frame_scale)
             except (cv2.error, ZeroDivisionError) as err:
                 main_loop.write(f'An error has occurred for video "{video_path}"')
-            except BatchSizeError as err:
+            except RuntimeError as err:
                 main_loop.write(f'GPU Memory error for video "{video_path}" with batch size: {reader.batch_size}')
             else:
                 # Write detection file
