@@ -74,6 +74,7 @@ def detect_faces_on_video(reader, detector, batch_size, scale):
             'batch_size': reader.batch_size,
             'min_face_size': detector.min_face_size,
             'max_frame_size': detector.max_frame_size,
+            'frame_scale': detector.scale,
             'width': width,
             'height': height,
             'video_length': reader.get_duration(),
