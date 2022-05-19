@@ -26,10 +26,11 @@ class VideoReader:
 
         self.get_shape(True)
 
-    def clear(self):
+    def reset(self):
+        self.stream.set(cv2.CAP_PROP_POS_MSEC, 0)
         # Empty the queue if there are any elements in it
         with self.frame_queue.mutex:
-            self.frame_queue.queue.clear()
+            self.frame_queue.queue.reset()
             self.frame_queue.all_tasks_done.notify_all()
             self.frame_queue.unfinished_tasks = 0
 
@@ -42,6 +43,7 @@ class VideoReader:
     def stop(self):
         self.stopped = True
         self.thread.join()
+        self.stream.release()
 
     def read(self):
         frame, timestamp = self.frame_queue.get()
@@ -49,8 +51,6 @@ class VideoReader:
         return frame, timestamp
 
     def update(self):
-        self.clear()
-
         ptime = 0
         dtime = 1.0 / self.frame_rate
         while not self.stopped:
@@ -66,7 +66,6 @@ class VideoReader:
                     ptime = stime
             else:
                 time.sleep(0.1)
-        self.stream.release()
 
     def more(self):
         tries = 0

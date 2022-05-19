@@ -106,10 +106,10 @@ def detect_faces_on_video(reader, detector, batch_size, scale):
             batch_size -= bz_frac
             if num_retry <= 0:
                 raise err
+            reader.reset()
         else:
-            return data
-        finally:
             reader.stop()
+            return data
 
 
 @argh.arg('src_folder', help='Source folder for the detections.')
