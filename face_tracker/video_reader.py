@@ -30,7 +30,7 @@ class VideoReader:
         self.stream.set(cv2.CAP_PROP_POS_MSEC, 0)
         # Empty the queue if there are any elements in it
         with self.frame_queue.mutex:
-            self.frame_queue.queue.reset()
+            self.frame_queue.queue.clear()
             self.frame_queue.all_tasks_done.notify_all()
             self.frame_queue.unfinished_tasks = 0
 

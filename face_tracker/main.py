@@ -136,11 +136,11 @@ def sample_videos(src_folder: str,
 
 @argh.arg('src_folder', help='Source file or folder with the videos.')
 @argh.arg('dst_folder', help='Destination folder for the detections.')
-@argh.arg('--frame-rate', default=30.0, help='Frame rate to read videos.')
-@argh.arg('--batch-size', default='auto', help='Batch size for the face detector.')
-@argh.arg('--min-face-size', default=20, help='Minimum size of a face required by the face detector.')
+@argh.arg('--frame-rate', type=float, default=30.0, help='Frame rate to read videos.')
+@argh.arg('--batch-size', type=str, default='auto', help='Batch size for the face detector.')
+@argh.arg('--min-face-size', type=int, default=20, help='Minimum size of a face required by the face detector.')
 @argh.arg('--max-frame-size', type=int, default=None, help='Max size for a frame.')
-@argh.arg('--frame-scale', default=1.0, help='Scaling factor for all frames.')
+@argh.arg('--frame-scale', type=float, default=1.0, help='Scaling factor for all frames.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 @argh.arg('-r', '--randomize', action='store_true', help='Randomize the order of files.')
 def detect_faces(src_folder: str,
