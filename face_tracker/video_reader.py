@@ -16,18 +16,20 @@ class VideoReader:
         self.thread = None
         self._width = None
         self._height = None
+        self._filename = None
 
     def open(self, filename: Union[str, Path]):
-        if isinstance(filename, Path):
-            filename = str(filename)
-        self.stream.open(filename)
-        self.stream.set(cv2.CAP_PROP_FPS, self.frame_rate)
-        self.stopped = False
+        self._filename = str(filename)
+        self.stream.open(self._filename)
+        self.get_shape(force=True)
 
-        self.get_shape(True)
+    def close(self):
+        if not self.stopped:
+            self.stop()
+        self.stream.release()
 
-    def reset(self):
-        self.stream.set(cv2.CAP_PROP_POS_MSEC, 0)
+    def clear_queue(self):
+        # self.stream.set(cv2.CAP_PROP_POS_MSEC, 0)
         # Empty the queue if there are any elements in it
         with self.frame_queue.mutex:
             self.frame_queue.queue.clear()
@@ -35,6 +37,8 @@ class VideoReader:
             self.frame_queue.unfinished_tasks = 0
 
     def start(self):
+        self.stream.set(cv2.CAP_PROP_FPS, self.frame_rate)
+        self.stopped = False
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
         self.thread.start()
@@ -42,8 +46,9 @@ class VideoReader:
 
     def stop(self):
         self.stopped = True
+        self._width = None
+        self._height = None
         self.thread.join()
-        self.stream.release()
 
     def read(self):
         frame, timestamp = self.frame_queue.get()
@@ -78,7 +83,7 @@ class VideoReader:
         return self.more() or not self.stopped
 
     def get_shape(self, force: bool = False) -> Tuple[int, int]:
-        if force:
+        if force or self._width is None or self._height is None:
             self._width = self.stream.get(cv2.CAP_PROP_FRAME_WIDTH)
             self._height = self.stream.get(cv2.CAP_PROP_FRAME_HEIGHT)
         return int(self._width), int(self._height)
