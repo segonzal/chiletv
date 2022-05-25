@@ -1,4 +1,4 @@
 *
 !.gitignore
-!dataset_durations.csv
+!general_dataset_stats.csv
 !testdata_detections.csv
