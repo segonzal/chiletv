@@ -9,6 +9,7 @@ dependencies:
   - ffmpeg=4.3
   - numpy=1.19
   - matplotlib=3.5
+  - seaborn=0.11
   - py-opencv=4.5
   - pytorch=1.10
   - torchvision=0.11

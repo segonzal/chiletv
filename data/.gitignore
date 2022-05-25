@@ -1,4 +1,4 @@
 *
 !.gitignore
 !general_dataset_stats.csv
-!testdata_detections.csv
+!face_detection_testdata.csv
