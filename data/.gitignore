@@ -1,4 +1,3 @@
 *
 !.gitignore
 !general_dataset_stats.csv
-!face_detection_testdata.h5
