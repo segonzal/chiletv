@@ -25,16 +25,20 @@ def get_detections(reader: BatchedVideoReader, detector: FaceDetector):
             yield frame, timestamp, bounding_box, key_points
 
 
-def find_batch_size(width: int, height: int, detector: FaceDetector):
+def find_batch_size(width: int, height: int, detector: FaceDetector, max_batch_size: int = np.inf):
     # increase batch size x2 until error
     batch_size = 1
     while True:
+        batch_size = min(2 * batch_size, max_batch_size)
         try:
             image = (255 * np.random.random((batch_size, width, height, 3))).astype(np.uint8)
             detector(image)
-        except RuntimeError as err:
+        except (RuntimeError, MemoryError) as err:
             break
-        batch_size *= 2
+        else:
+            # if max_batch_size was supported previously then it's the maximum possible valid value
+            if batch_size >= max_batch_size:
+                return max_batch_size
 
     upper_bound = batch_size
     lower_bound = batch_size // 2
@@ -196,7 +200,9 @@ def detect_faces(src_folder: str,
                 detector.set_scale(video_scale)
 
                 if batch_size == 'auto':
-                    video_batch_size = min(1024, find_batch_size(width, height, detector))
+                    video_batch_size = find_batch_size(width, height, detector, max_batch_size=1024)
+                else:
+                    video_batch_size = batch_size
 
                 bz_frac = max(int(0.1 * video_batch_size), 1)
                 for retry_num in range(5):
