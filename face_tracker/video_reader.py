@@ -59,6 +59,7 @@ class VideoReader:
         ptime = 0
         dtime = 1.0 / self.frame_rate
         self.stream.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        self.clear_queue()
         while not self.stopped:
             if not self.frame_queue.full():
                 ok, frame = self.stream.read()

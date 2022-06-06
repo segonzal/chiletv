@@ -148,12 +148,14 @@ def get_max_batch_size(video_path: str,
 @argh.arg('src_folder', help='Source file or folder with the videos.')
 @argh.arg('dst_folder', help='Destination folder for the detections.')
 @argh.arg('--frame-rate', type=float, default=30.0, help='Frame rate to read videos.')
-@argh.arg('--batch-size', type=str, default='auto', help='Batch size for the face detector.')
+@argh.arg('--batch-size', type=int, default=0, help='Batch size for the face detector.')
 @argh.arg('--min-face-size', type=int, default=20, help='Minimum size of a face required by the face detector.')
 @argh.arg('--max-frame-size', type=int, default=None, help='Max size for a frame.')
 @argh.arg('--frame-scale', type=float, default=1.0, help='Scaling factor for all frames.')
 @argh.arg('--use-cpu', action='store_true', help='Whether the face detector should use the CPU.')
 @argh.arg('-r', '--randomize', action='store_true', help='Randomize the order of files.')
+@argh.arg('--max-batch-size', type=int, default=1024, help='Maximum batch size.')
+@argh.arg('--max-retries', type=int, default=5, help='Maximum number of retries per video.')
 def detect_faces(src_folder: str,
                  dst_folder: str,
                  frame_rate: float = 30.0,
@@ -162,7 +164,9 @@ def detect_faces(src_folder: str,
                  max_frame_size: int = None,
                  frame_scale: float = 1.0,
                  use_cpu: bool = False,
-                 randomize: bool = False):
+                 randomize: bool = False,
+                 max_batch_size: int = 1024,
+                 max_retries: int = 5):
     src_folder = Path(src_folder)
     dst_folder = Path(dst_folder)
 
@@ -179,33 +183,31 @@ def detect_faces(src_folder: str,
     if randomize:
         random.shuffle(ongoing_videos)
 
-    reader = BatchedVideoReader(frame_rate)
     detector = FaceDetector(min_face_size, max_frame_size, not use_cpu, frame_scale)
-
-    if batch_size.isnumeric():
-        batch_size = int(batch_size)
 
     with tqdm.tqdm(ongoing_videos, total=len(all_videos), initial=len(done_videos)) as main_loop:
         for video_path in main_loop:
             main_loop.set_description(video_path.name)
 
+            video_scale = frame_scale
+            video_batch_size = batch_size
+
+            reader = BatchedVideoReader(frame_rate)
+
             try:
                 reader.open(video_path)
                 width, height = reader.get_shape()
 
-                video_scale = frame_scale
                 if detector.max_frame_size and detector.max_frame_size < max(width, height):
                     video_scale = float(detector.max_frame_size) / float(frame_scale * max(width, height))
 
                 detector.set_scale(video_scale)
 
-                if batch_size == 'auto':
-                    video_batch_size = find_batch_size(width, height, detector, max_batch_size=1024)
-                else:
-                    video_batch_size = batch_size
+                if video_batch_size <= 0:
+                    video_batch_size = find_batch_size(width, height, detector, max_batch_size=max_batch_size)
 
                 bz_frac = max(int(0.1 * video_batch_size), 1)
-                for retry_num in range(5):
+                for retry_num in range(max(1, max_retries)):
                     reader.set_batch_size(video_batch_size - bz_frac * retry_num)
                     try:
                         data = detect_faces_on_video(reader, detector)
@@ -220,6 +222,8 @@ def detect_faces(src_folder: str,
             except (cv2.error, ZeroDivisionError) as err:
                 main_loop.write(f'Video "{video_path}"({reader.batch_size}) has errors.\n\n{str(err)}\n\n')
                 continue
+
+            del reader
 
 
 @argh.arg('src_folder', help='Source folder for the detections.')
