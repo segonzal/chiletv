@@ -125,7 +125,7 @@ class LaNacionSpider(CrawlSpider):
 
 class LaRazonSpider(CrawlSpider):
     name = 'larazon'
-    allowed_domains = ['lanrazon.cl']
+    allowed_domains = ['larazon.cl']
     start_urls = ['https://www.larazon.cl/']
 
     rules = ()
@@ -181,7 +181,26 @@ class TheClinicSpider(CrawlSpider):
     allowed_domains = ['theclinic.cl']
     start_urls = ['https://www.theclinic.cl/']
 
-    rules = ()
+    rules = (
+        Rule(LinkExtractor(allow=r'/\d{4}/\d{2}/\d{2}/.*'), callback='parse_item', follow=True),
+        Rule(LinkExtractor(allow=r'.*'), follow=True),
+    )
 
     def parse_item(self, response):
-        pass
+        title = response.css('article.principal h1::text').get()
+        pubDate = datetime.strptime(
+            response.xpath('//meta[@property="article:published_time"]/@content').get()[:19], '%Y-%m-%dT%H:%M:%S')
+        category = set([response.css('article.principal h2.seccion a::text').get()])
+        category.update(response.css('div.tags a::text').getall())
+        guid=response.xpath('//meta[@property="og:url"]/@content').get()
+        description = response.css('article.principal p.bajada').get()
+        content = response.css('article.principal div.the-content p')
+        return repair_item({
+            'title': title,
+            'pubDate': pubDate,
+            'category': category,
+            'guid': guid,
+            'description': description,
+            'content': extract_content(content),
+            'crawlDate': datetime.utcnow(),
+        })
