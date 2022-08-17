@@ -25,7 +25,7 @@ def main(spiders: List[str] = list, loglevel: str = 'ERROR'):
     settings = get_project_settings()
     settings.update({
         'FEEDS': {
-            'data/%(name)s.json': {
+            'data/%(name)s_%(time)s.json': {
                 'format': 'jsonlines',
                 'encoding': 'utf8',
                 'store_empty': False,
@@ -39,8 +39,11 @@ def main(spiders: List[str] = list, loglevel: str = 'ERROR'):
     })
     process = CrawlerProcess(settings)
     for spider in spiders:
+        spider.custom_settings = {'JOBDIR': 'data/crawl-'+spider.name}
         process.crawl(spider)
     process.start()
+    #process.join()
+    #process.stop()
 
 
 if __name__ == '__main__':

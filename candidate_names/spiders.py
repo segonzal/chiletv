@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from scrapy.linkextractors import LinkExtractor
@@ -33,16 +34,18 @@ class ElMostradorSpider(CrawlSpider):
 
     def parse_item(self, response):
         item = {}
+        item['site'] = self.name
         item['title'] = response.xpath('//meta[@property="og:title"]/@content').get()
         item['pubDate'] = datetime.strptime(
             response.xpath('//meta[@property="article:published_time"]/@content').get()[:19], '%Y-%m-%dT%H:%M:%S')
         item['category'] = set()
         item['category'].update(response.xpath('//meta[@property="article:tag"]/@content').getall())
         item['category'].update(response.xpath('//meta[@property="article:section"]/@content').getall())
-        item['guid'] = response.xpath('//link[@rel="shortlink"]/@href').get()
+        item['url'] = response.xpath('//link[@rel="shortlink"]/@href').get()
         item['description'] = pick_longest(response.xpath('//meta[@property="og:description"]/@content').getall())
         item['content'] = extract_content(response.css('div#noticia > p, div#noticia > h3'))
         item['crawlDate'] = datetime.utcnow()
+        item['id'] = str(uuid.uuid5(uuid.NAMESPACE_URL, item['url'])).replace('-','')
         return repair_item(item)
 
 
@@ -71,13 +74,15 @@ class EmolSpider(CrawlSpider):
 
         if title:
             return repair_item({
+                'site': self.name,
                 'title': title[:-len(' | Emol.com')],
                 'pubDate': datetime.strptime(pubDate[:19], '%Y-%m-%dT%H:%M:%S'),
                 'category': category,
-                'guid': guid,
+                'url': guid,
                 'description': description,
                 'content': extract_content(content),
                 'crawlDate': datetime.utcnow(),
+                'id': str(uuid.uuid5(uuid.NAMESPACE_URL, guid)).replace('-',''),
             })
 
 
@@ -102,13 +107,15 @@ class LaCuartaSpider(CrawlSpider):
         content = response.css('article section:first-child>:not(figure):not(div.container):not(div.story-twitter):not(div.story-instagram)')
 
         return repair_item({
+            'site': self.name,
             'title': title,
             'pubDate': datetime.strptime(pubDate[:19], '%Y-%m-%dT%H:%M:%S'),
             'category': category,
-            'guid': guid,
+            'url': guid,
             'description': description,
             'content': extract_content(content),
             'crawlDate': datetime.utcnow(),
+            'id': str(uuid.uuid5(uuid.NAMESPACE_URL, guid)).replace('-',''),
         })
 
 
@@ -153,15 +160,17 @@ class LaTerceraSpider(CrawlSpider):
 
         if pubdate:
             item = {}
+            item['site'] = self.name
             item['title'] = pick_longest(response.xpath('//meta[@property="og:title"]/@content').getall())[:-13]
             item['pubDate'] = datetime.strptime(pubdate[:19], '%Y-%m-%dT%H:%M:%S')
             item['category'] = set()
             item['category'].update(response.xpath('//meta[@property="article:tag"]/@content').getall())
             item['category'].update(response.xpath('//meta[@property="article:section"]/@content').getall())
-            item['guid'] = response.xpath('//meta[@property="og:url"]/@content').get()
+            item['url'] = response.xpath('//meta[@property="og:url"]/@content').get()
             item['description'] = pick_longest(response.xpath('//meta[@property="og:description"]/@content').getall())
             item['content'] = extract_content(response.css('article div.single-content > p, div.header'))
             item['crawlDate'] = datetime.utcnow()
+            item['id'] = str(uuid.uuid5(uuid.NAMESPACE_URL, item['url'])).replace('-','')
             return repair_item(item)
 
 
@@ -182,25 +191,31 @@ class TheClinicSpider(CrawlSpider):
     start_urls = ['https://www.theclinic.cl/']
 
     rules = (
-        Rule(LinkExtractor(allow=r'/\d{4}/\d{2}/\d{2}/.*'), callback='parse_item', follow=True),
-        Rule(LinkExtractor(allow=r'.*'), follow=True),
-    )
+        Rule(LinkExtractor(allow=r'/\d{4}/\d{2}/\d{2}/.*', deny=r'/media/.*'), callback='parse_item', follow=True),
+        Rule(LinkExtractor(allow=r'.*', deny=r'/media/.*'), follow=True),
+    )#deny_domains='static.theclinic.cl'
 
     def parse_item(self, response):
+        # Weird but I hope it makes this work
+        if '/media/' in response.url:
+            return
+
         title = response.css('article.principal h1::text').get()
         pubDate = datetime.strptime(
             response.xpath('//meta[@property="article:published_time"]/@content').get()[:19], '%Y-%m-%dT%H:%M:%S')
         category = set([response.css('article.principal h2.seccion a::text').get()])
         category.update(response.css('div.tags a::text').getall())
         guid=response.xpath('//meta[@property="og:url"]/@content').get()
-        description = response.css('article.principal p.bajada').get()
+        description = response.css('article.principal p.bajada::text').get()
         content = response.css('article.principal div.the-content p')
         return repair_item({
+            'site': self.name,
             'title': title,
             'pubDate': pubDate,
             'category': category,
-            'guid': guid,
+            'url': guid,
             'description': description,
             'content': extract_content(content),
             'crawlDate': datetime.utcnow(),
+            'id': str(uuid.uuid5(uuid.NAMESPACE_URL, guid)).replace('-',''),
         })
